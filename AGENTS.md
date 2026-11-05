@@ -9,82 +9,70 @@ each subsystem remains runnable and explainable.
 
 ## Current milestone
 
-M0 has been completed and accepted by the user. We are now implementing M1:
+M0 and M1 have been completed and accepted by the user.
 
-> UART console and panic path — how does the kernel report state when it
-> cannot continue?
+- M0: reproducible build and boot message in QEMU.
+- M1: UART driver and `panic()` path. See
+  `docs/milestones/M1-uart-console-and-panic.md` for the data flow, the panic
+  invariant, and the known limitations.
 
-M1 is complete only when the UART output and panic behavior work in QEMU, and
-the data flow, invariant, and known limitation are documented.
+The next milestone is M2:
 
-## M1 work sequence
+> Trap handler and timer interrupt — how does control leave normal kernel code
+> and return?
 
-Work in small, reviewable slices:
+M2 has not started. Before writing any M2 code, agree on its work sequence
+with the user and record it in this file as small, reviewable slices. Do not
+start memory allocation, virtual memory, scheduling, or user mode as part of
+M2.
 
-1. Extract the current raw UART writes into a small UART driver.
-2. Add the `panic()` path that prints a diagnostic message and never returns.
-3. Add the M1 milestone documentation and run the QEMU acceptance checks.
+Known M1 limitations that M2 must keep in mind:
 
-Do not start trap handling, timer interrupts, memory allocation, virtual
-memory, scheduling, or user mode as part of M1.
+- `panic()` does not disable interrupts. Once interrupts are enabled, a trap
+  could resume execution after a panic, which would break the panic invariant.
+- `panic()` depends on the UART driver to report anything.
 
-## Current task: UART driver
+## Build and run
 
-The next implementation slice is:
-
-- Add `include/uart.h`.
-- Add `kernel/drivers/uart.c`.
-- Move `uart_putc()` and `uart_puts()` out of `kernel/main.c`.
-- Keep `kernel/main.c` dependent on the UART API rather than UART register
-  details.
-- Use QEMU `virt`'s 16550-compatible UART at `0x10000000`.
-- `uart_putc()` must wait for the transmitter holding register to be empty
-  before writing the next byte.
-- Use `volatile` for MMIO register access.
-
-Relevant registers:
-
-```c
-#define UART0_BASE 0x10000000UL
-#define UART_THR 0
-#define UART_LSR 5
-#define UART_LSR_THRE (1 << 5)
+```sh
+make clean && make run                # normal boot
+make clean && make run PANIC_TEST=1   # panic test (-DRIFTOS_PANIC_TEST)
 ```
 
-The expected behavior must remain:
+The makefile does not track `CFLAGS` or header dependencies, so run
+`make clean` when switching `PANIC_TEST` or after editing a header. Exit QEMU
+with `Ctrl-A` then `X`.
+
+Expected output:
 
 ```text
-RiftOS booted
+RiftOS booted                 # normal boot
+RiftOS booted                 # PANIC_TEST=1
+[PANIC]: Test
 ```
 
-Do not implement `panic()` in this slice. Review the user's implementation
-before moving to the next slice.
+Both checks must keep passing in later milestones.
+
+## Code layout conventions
+
+- `include/`: public headers. Expose APIs only; keep register details in the
+  `.c` file.
+- `kernel/drivers/`: code that touches device registers directly.
+- `kernel/`: kernel code that uses driver APIs (for example `main.c`,
+  `panic.c`).
+- `compile_flags.txt`: clangd flags for the RISC-V target. Keep it in sync with
+  `CFLAGS` in the makefile.
 
 ## Learning workflow
 
 - Prefer explaining the rationale and expected result over writing the core
   subsystem code for the user.
 - Leave the user room to implement the focused slice.
+- Break each slice into very small steps, one change at a time, and verify
+  each step in QEMU before moving on. Separate pure moves or renames from
+  behavior changes.
+- Explain in Traditional Chinese. Use concrete evidence (QEMU output,
+  `objdump`, `nm`) to show why something works or fails.
 - Review the user's diff and QEMU output after each slice.
 - Ask one focused conceptual question at a time.
 - Keep changes narrow and avoid unrelated cleanup.
-
-## M1 acceptance behavior
-
-Normal boot must print:
-
-```text
-RiftOS booted
-```
-
-The later panic test must print a `[PANIC]` diagnostic and stop permanently;
-execution must not return to the caller or continue into later kernel code.
-
-The planned documentation file is:
-
-```text
-docs/milestones/M1-uart-console-and-panic.md
-```
-
-It should record the data flow `_start -> kernel_main -> UART API -> UART
-MMIO`, the panic invariant, and the remaining limitations.

@@ -115,9 +115,15 @@ compiler can emit RISC-V binaries.
 
 ## Current status
 
-The project is at the planning stage. The next step is M0: verify the RISC-V
-toolchain and QEMU installation, then boot the smallest possible kernel and
-print a startup message over UART.
+M0 and M1 are complete:
+
+- M0: the kernel builds with the `riscv64-elf-` toolchain and boots in QEMU
+  through OpenSBI.
+- M1: console output goes through a UART driver, and `panic()` prints a
+  `[PANIC]` diagnostic and stops permanently. See
+  [docs/milestones/M1-uart-console-and-panic.md](docs/milestones/M1-uart-console-and-panic.md).
+
+The next step is M2: trap handler and timer interrupt.
 
 ## Learning rule
 
