@@ -21,10 +21,30 @@ The next milestone is M2:
 > Trap handler and timer interrupt — how does control leave normal kernel code
 > and return?
 
-M2 has not started. Before writing any M2 code, agree on its work sequence
-with the user and record it in this file as small, reviewable slices. Do not
-start memory allocation, virtual memory, scheduling, or user mode as part of
-M2.
+M2 is in progress. Do not start memory allocation, virtual memory,
+scheduling, or user mode as part of M2.
+
+### M2 work sequence (agreed with the user)
+
+Do the slices in order. Each slice must run in QEMU and be reviewed before the
+next one starts.
+
+| Slice | Goal | Verification |
+| --- | --- | --- |
+| M2-0 | Add `uart_puthex(uint64_t)` so trap CSRs can be printed. API only, no behavior change. | `main` prints a known constant (for example `0x80200000`) correctly. |
+| M2-1 | First trap, no return: an assembly trap entry (4-byte aligned) installed with `csrw stvec`. Under a new `TRAP_TEST` flag, run `ebreak`. The C handler prints `scause`, `sepc`, and `stval`, then calls `panic`. | `scause = 3` (breakpoint). `sepc` equals the address of `ebreak` in `objdump`. |
+| M2-2 | Return from the trap: save and restore the general registers in a trap frame on the stack, advance `sepc` past `ebreak`, then `sret`. | The message after `ebreak` prints. `objdump` shows whether `ebreak` is 2 bytes (`c.ebreak`) or 4 bytes, which decides how far `sepc` advances. |
+| M2-3 | Restore the panic invariant: `panic()` clears `sstatus.SIE` first. Must land before any slice enables interrupts. | `PANIC_TEST=1` still passes. |
+| M2-4 | First timer interrupt: SBI TIME extension `set_timer`, enable `sie.STIE` and `sstatus.SIE`. The handler recognizes interrupt bit + code 5, prints once, then pushes the timer far into the future. | Exactly one timer line prints. |
+| M2-5 | Periodic tick: reprogram the next timer on every interrupt, count ticks, print every N ticks. | Tick lines keep appearing. With `PANIC_TEST=1`, no tick prints after `[PANIC]`. |
+
+Open decision: `entry.S` does not zero `.bss`. The M2-5 tick counter lives in
+`.bss` and currently relies on QEMU leaving RAM zeroed. Ask the user whether
+to add a small "zero `.bss` in `entry.S`" slice before M2-5.
+
+Pending conceptual question for M2-1: when the S-mode kernel runs `ebreak`,
+does the CPU jump to our `stvec` or to OpenSBI's M-mode handler, and which
+mechanism decides that?
 
 Known M1 limitations that M2 must keep in mind:
 
