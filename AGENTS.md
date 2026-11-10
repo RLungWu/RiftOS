@@ -21,8 +21,10 @@ The next milestone is M2:
 > Trap handler and timer interrupt — how does control leave normal kernel code
 > and return?
 
-M2 is in progress. Do not start memory allocation, virtual memory,
-scheduling, or user mode as part of M2.
+M2 is in progress. M2-0 and M2-1 are done; M2-2 is next. Do not start memory
+allocation, virtual memory, scheduling, or user mode as part of M2.
+
+The user's study notes for M2-1 are in `docs/notes/M2-1-trap-basics.md`.
 
 ### M2 work sequence (agreed with the user)
 
@@ -42,9 +44,13 @@ Open decision: `entry.S` does not zero `.bss`. The M2-5 tick counter lives in
 `.bss` and currently relies on QEMU leaving RAM zeroed. Ask the user whether
 to add a small "zero `.bss` in `entry.S`" slice before M2-5.
 
-Pending conceptual question for M2-1: when the S-mode kernel runs `ebreak`,
-does the CPU jump to our `stvec` or to OpenSBI's M-mode handler, and which
-mechanism decides that?
+Facts found during M2-1 that M2-2 depends on:
+
+- `ebreak` assembles to the 2-byte `c.ebreak` (`9002`) because `rv64gc`
+  enables compressed instructions, so M2-2 advances `sepc` by 2.
+- QEMU sets `stval` to the `ebreak` address for a breakpoint trap.
+- OpenSBI already sets `stvec` to `_start` before entering the kernel, so a
+  trap before `trap_init()` restarts the kernel instead of hanging.
 
 Known M1 limitations that M2 must keep in mind:
 
@@ -57,11 +63,12 @@ Known M1 limitations that M2 must keep in mind:
 ```sh
 make clean && make run                # normal boot
 make clean && make run PANIC_TEST=1   # panic test (-DRIFTOS_PANIC_TEST)
+make clean && make run TRAP_TEST=1    # trap test (-DRIFTOS_TRAP_TEST)
 ```
 
 The makefile does not track `CFLAGS` or header dependencies, so run
-`make clean` when switching `PANIC_TEST` or after editing a header. Exit QEMU
-with `Ctrl-A` then `X`.
+`make clean` when switching `PANIC_TEST` or `TRAP_TEST`, or after editing a
+header. Exit QEMU with `Ctrl-A` then `X`.
 
 Expected output:
 
@@ -69,9 +76,15 @@ Expected output:
 RiftOS booted                 # normal boot
 RiftOS booted                 # PANIC_TEST=1
 [PANIC]: Test
+RiftOS booted                 # TRAP_TEST=1 (as of M2-1)
+scause = 0000000000000003
+sepc = <address of ebreak in objdump>
+stval = <same as sepc>
+[PANIC]: unexpected trap
 ```
 
-Both checks must keep passing in later milestones.
+The normal and panic checks must keep passing in later milestones. The trap
+check's expected output changes in M2-2, when the trap returns.
 
 ## Code layout conventions
 
