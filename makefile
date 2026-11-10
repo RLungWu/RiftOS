@@ -1,4 +1,3 @@
-# 工具鏈與旗標設定
 CROSS_COMPILE ?= riscv64-elf-
 CC             = $(CROSS_COMPILE)gcc
 LD             = $(CROSS_COMPILE)ld
@@ -13,29 +12,30 @@ ifeq ($(PANIC_TEST), 1)
 CFLAGS		   += -DRIFTOS_PANIC_TEST
 endif
 
-# 路徑與檔案
+ifeq ($(TRAP_TEST), 1)
+CFLAGS         += -DRIFTOS_TRAP_TEST
+endif
+
 BUILD_DIR      = build
 TARGET         = $(BUILD_DIR)/kernel.elf
 OBJS           = $(BUILD_DIR)/entry.o \
                  $(BUILD_DIR)/main.o \
                  $(BUILD_DIR)/uart.o \
-				 $(BUILD_DIR)/panic.o
+				 $(BUILD_DIR)/panic.o \
+				 $(BUILD_DIR)/trap.o \
+				 $(BUILD_DIR)/trap_entry.o
 
-# 假想目標（避免與同名檔案衝突）
 .PHONY: all run clean
 
-# 預設建置目標
 all: $(TARGET)
 
-# 連結成 ELF
+
 $(TARGET): $(OBJS) | $(BUILD_DIR)
 	$(LD) $(LDFLAGS) $^ -o $@
 
-# 組合語言編譯規則
 $(BUILD_DIR)/entry.o: kernel/boot/entry.S | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# C 語言編譯規則
 $(BUILD_DIR)/main.o: kernel/main.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
@@ -45,14 +45,17 @@ $(BUILD_DIR)/uart.o: kernel/drivers/uart.c | $(BUILD_DIR)
 $(BUILD_DIR)/panic.o: kernel/panic.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# 自動建立輸出目錄
+$(BUILD_DIR)/trap.o: kernel/trap.c | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/trap_entry.o: kernel/trap_entry.S | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
-# 透過 QEMU 執行
 run: $(TARGET)
 	$(QEMU) $(QEMUFLAGS) $(TARGET)
 
-# 清理編譯產物
 clean:
 	rm -rf $(BUILD_DIR)
