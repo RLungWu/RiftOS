@@ -25,6 +25,12 @@ void trap_handler(void){
     uart_puthex(stval);
     uart_puts("\r\n");
 
+    if (scause == 3) {
+        sepc += 2;
+        __asm__ volatile("csrw sepc, %0" : : "r"(sepc));
+        return;
+    }
+
     panic("unexpected trap");
 }
 
