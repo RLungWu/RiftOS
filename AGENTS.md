@@ -21,7 +21,7 @@ The next milestone is M2:
 > Trap handler and timer interrupt — how does control leave normal kernel code
 > and return?
 
-M2 is in progress. M2-0, M2-1, and M2-2 are done; M2-3 is next. Do not start
+M2 is in progress. M2-0 through M2-3 are done; M2-4 is next. Do not start
 memory allocation, virtual memory, scheduling, or user mode as part of M2.
 
 The user's study notes are in `docs/notes/` (`M2-1-trap-basics.md`,
@@ -45,7 +45,7 @@ Open decision: `entry.S` does not zero `.bss`. The M2-5 tick counter lives in
 `.bss` and currently relies on QEMU leaving RAM zeroed. Ask the user whether
 to add a small "zero `.bss` in `entry.S`" slice before M2-5.
 
-Facts found during M2-1 and M2-2:
+Facts found during M2-1 through M2-3:
 
 - `ebreak` assembles to the 2-byte `c.ebreak` (`9002`) because `rv64gc`
   enables compressed instructions, so `trap_handler` advances `sepc` by 2.
@@ -58,11 +58,15 @@ Facts found during M2-1 and M2-2:
   `xN` at offset `N * 8` (x1, x3–x31; x0 and sp are not stored). Without it,
   `a0` came back from the trap as `0x802001EA` (the end of the `"\r\n"` string
   `trap_handler` printed last) instead of `0x1234`.
+- `panic()` runs `csrci sstatus, 2` (clear SIE only) before its first
+  `uart_puts`. `objdump` shows it right after the 4-instruction prologue,
+  which is safe because nothing has been printed yet. `csrw sstatus, 0` was
+  rejected: boot-time `sstatus` is `0x8000000200006000`, and clearing FS
+  (bits 13–14) would make any floating-point instruction trap. The end-to-end
+  proof comes in M2-5 (no tick after `[PANIC]`).
 
-Known M1 limitations that M2 must keep in mind:
+Known M1 limitation that M2 must keep in mind:
 
-- `panic()` does not disable interrupts. Once interrupts are enabled, a trap
-  could resume execution after a panic, which would break the panic invariant.
 - `panic()` depends on the UART driver to report anything.
 
 ## Build and run
