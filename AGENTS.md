@@ -21,10 +21,11 @@ The next milestone is M2:
 > Trap handler and timer interrupt — how does control leave normal kernel code
 > and return?
 
-M2 is in progress. M2-0 and M2-1 are done; M2-2 is next. Do not start memory
-allocation, virtual memory, scheduling, or user mode as part of M2.
+M2 is in progress. M2-0, M2-1, and M2-2 are done; M2-3 is next. Do not start
+memory allocation, virtual memory, scheduling, or user mode as part of M2.
 
-The user's study notes for M2-1 are in `docs/notes/M2-1-trap-basics.md`.
+The user's study notes are in `docs/notes/` (`M2-1-trap-basics.md`,
+`M2-2-trap-return.md`).
 
 ### M2 work sequence (agreed with the user)
 
@@ -44,13 +45,19 @@ Open decision: `entry.S` does not zero `.bss`. The M2-5 tick counter lives in
 `.bss` and currently relies on QEMU leaving RAM zeroed. Ask the user whether
 to add a small "zero `.bss` in `entry.S`" slice before M2-5.
 
-Facts found during M2-1 that M2-2 depends on:
+Facts found during M2-1 and M2-2:
 
 - `ebreak` assembles to the 2-byte `c.ebreak` (`9002`) because `rv64gc`
-  enables compressed instructions, so M2-2 advances `sepc` by 2.
+  enables compressed instructions, so `trap_handler` advances `sepc` by 2.
+  This is hard-coded and only valid for `c.ebreak`; any other exception
+  panics.
 - QEMU sets `stval` to the `ebreak` address for a breakpoint trap.
 - OpenSBI already sets `stvec` to `_start` before entering the kernel, so a
   trap before `trap_init()` restarts the kernel instead of hanging.
+- `trap_entry` builds a 256-byte trap frame on the current stack and stores
+  `xN` at offset `N * 8` (x1, x3–x31; x0 and sp are not stored). Without it,
+  `a0` came back from the trap as `0x802001EA` (the end of the `"\r\n"` string
+  `trap_handler` printed last) instead of `0x1234`.
 
 Known M1 limitations that M2 must keep in mind:
 
@@ -76,15 +83,14 @@ Expected output:
 RiftOS booted                 # normal boot
 RiftOS booted                 # PANIC_TEST=1
 [PANIC]: Test
-RiftOS booted                 # TRAP_TEST=1 (as of M2-1)
+RiftOS booted                 # TRAP_TEST=1
 scause = 0000000000000003
 sepc = <address of ebreak in objdump>
 stval = <same as sepc>
-[PANIC]: unexpected trap
+a0 after trap = 0000000000001234
 ```
 
-The normal and panic checks must keep passing in later milestones. The trap
-check's expected output changes in M2-2, when the trap returns.
+All three checks must keep passing in later milestones.
 
 ## Code layout conventions
 
