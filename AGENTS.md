@@ -21,7 +21,7 @@ The next milestone is M2:
 > Trap handler and timer interrupt — how does control leave normal kernel code
 > and return?
 
-M2 is in progress. M2-0 through M2-3 are done; M2-4 is next. Do not start
+M2 is in progress. M2-0 through M2-4 are done; M2-5 is next. Do not start
 memory allocation, virtual memory, scheduling, or user mode as part of M2.
 
 The user's study notes are in `docs/notes/` (`M2-1-trap-basics.md`,
@@ -45,7 +45,7 @@ Open decision: `entry.S` does not zero `.bss`. The M2-5 tick counter lives in
 `.bss` and currently relies on QEMU leaving RAM zeroed. Ask the user whether
 to add a small "zero `.bss` in `entry.S`" slice before M2-5.
 
-Facts found during M2-1 through M2-3:
+Facts found during M2-1 through M2-4:
 
 - `ebreak` assembles to the 2-byte `c.ebreak` (`9002`) because `rv64gc`
   enables compressed instructions, so `trap_handler` advances `sepc` by 2.
@@ -62,8 +62,29 @@ Facts found during M2-1 through M2-3:
   `uart_puts`. `objdump` shows it right after the 4-instruction prologue,
   which is safe because nothing has been printed yet. `csrw sstatus, 0` was
   rejected: boot-time `sstatus` is `0x8000000200006000`, and clearing FS
-  (bits 13–14) would make any floating-point instruction trap. The end-to-end
-  proof comes in M2-5 (no tick after `[PANIC]`).
+  (bits 13–14) would make any floating-point instruction trap. M2-4 showed it
+  working: with `PANIC_TEST=1` the 1-second timer never prints after
+  `[PANIC]`.
+- QEMU `virt` `timebase-frequency` is 10 MHz (`0x989680` ticks per second,
+  from the device tree). By default `time` follows host wall-clock time, so
+  gaps measured in `time` depend on host speed; `-icount shift=0` makes them
+  deterministic.
+- `sbi_set_timer()` (`kernel/sbi.c`) calls SBI TIME (`a7 = 0x54494D45`,
+  `a6 = 0`, `a0 = stime_value`). It declares `a1` as an output because the
+  SBI returns a value there. `medeleg` bit 9 is 0, so S-mode `ecall` goes to
+  OpenSBI.
+- At boot `sip = 0x20` (STIP already pending) because `stimecmp = 0`. Interrupts
+  must be enabled only after `sbi_set_timer()`, or a stale interrupt fires
+  first and the timer line prints twice. `kernel_main` enables `sie.STIE`
+  with `csrs sie, %0` (the 5-bit `csrsi` immediate cannot hold 32), then
+  `sstatus.SIE`.
+- The timer branch in `trap_handler` compares the full `scause`
+  (`0x8000000000000005`); exception code 5 without bit 63 is a load access
+  fault. It does not touch `sepc`: for an interrupt, `sepc` is the next
+  instruction not yet run (the second `wfi` of the unrolled idle loop). It
+  stops the timer with `sbi_set_timer(~0UL)`.
+- `trap_handler` still prints `scause`, `sepc`, and `stval` for every trap.
+  M2-5 must decide whether periodic ticks keep that output.
 
 Known M1 limitation that M2 must keep in mind:
 
@@ -85,16 +106,28 @@ Expected output:
 
 ```text
 RiftOS booted                 # normal boot
+scause = 8000000000000005     # about 1 second later, exactly once
+sepc = <address after a wfi in objdump>
+stval = 0000000000000000
+time interrupt
+
 RiftOS booted                 # PANIC_TEST=1
-[PANIC]: Test
+[PANIC]: Test                 # nothing after this, even after 1 second
+
 RiftOS booted                 # TRAP_TEST=1
 scause = 0000000000000003
 sepc = <address of ebreak in objdump>
 stval = <same as sepc>
 a0 after trap = 0000000000001234
+scause = 8000000000000005     # timer, about 1 second later
+sepc = <address after a wfi in objdump>
+stval = 0000000000000000
+time interrupt
 ```
 
-All three checks must keep passing in later milestones.
+All three checks must keep passing in later milestones (the timer lines
+change in M2-5). Watch each run for at least 2 seconds so the timer has
+time to fire.
 
 ## Code layout conventions
 
