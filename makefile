@@ -23,7 +23,8 @@ OBJS           = $(BUILD_DIR)/entry.o \
                  $(BUILD_DIR)/uart.o \
 				 $(BUILD_DIR)/panic.o \
 				 $(BUILD_DIR)/trap.o \
-				 $(BUILD_DIR)/trap_entry.o
+				 $(BUILD_DIR)/trap_entry.o \
+				 $(BUILD_DIR)/sbi.o
 
 .PHONY: all run clean
 
@@ -49,6 +50,9 @@ $(BUILD_DIR)/trap.o: kernel/trap.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/trap_entry.o: kernel/trap_entry.S | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/sbi.o: kernel/sbi.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD_DIR):

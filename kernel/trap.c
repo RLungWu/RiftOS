@@ -3,8 +3,12 @@
 #include "panic.h"
 #include "uart.h"
 #include "trap.h"
+#include "sbi.h"
 
 extern void trap_entry(void);
+
+#define FLAG_FOR_INTERRUPT_IN_TRAP (1UL << 63)
+#define S_MODE_CLOCK 5
 
 void trap_handler(void){
     uint64_t scause, sepc, stval;
@@ -24,6 +28,12 @@ void trap_handler(void){
     uart_puts("stval = ");
     uart_puthex(stval);
     uart_puts("\r\n");
+
+    if (scause == (FLAG_FOR_INTERRUPT_IN_TRAP|S_MODE_CLOCK)){
+        uart_puts("time interrupt\r\n");
+        sbi_set_timer(~0UL);
+        return;
+    }
 
     if (scause == 3) {
         sepc += 2;
