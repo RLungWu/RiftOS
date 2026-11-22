@@ -9,30 +9,29 @@ each subsystem remains runnable and explainable.
 
 ## Current milestone
 
-M0 and M1 have been completed and accepted by the user.
+M0, M1, and M2 have been completed and accepted by the user.
 
 - M0: reproducible build and boot message in QEMU.
 - M1: UART driver and `panic()` path. See
   `docs/milestones/M1-uart-console-and-panic.md` for the data flow, the panic
   invariant, and the known limitations.
+- M2: trap handler and timer interrupt ("how does control leave normal kernel
+  code and return?"). See `docs/milestones/M2-trap-and-timer.md` for the data
+  flow, invariants, acceptance checks, pitfalls, and known limitations.
 
-The next milestone is M2:
-
-> Trap handler and timer interrupt — how does control leave normal kernel code
-> and return?
-
-All M2 slices (M2-0 through M2-6) are done. Before M2 is accepted, write
-`docs/milestones/M2-trap-and-timer.md` in the same style as the M1 document
-(data flow, invariants, acceptance, known limitations). Do not start memory
-allocation, virtual memory, scheduling, or user mode as part of M2.
+The next milestone has not been chosen. Before writing any code for it, agree
+on its goal and its work sequence with the user and record them in this file
+as small, reviewable slices, as was done for M2 below. Read the M2 known
+limitations first; several of them (the trap frame not visible to C, the
+single 4 KiB stack, the unchecked `sbi_set_timer` result in
+`timer_interrupt`) are likely to matter.
 
 The user's study notes are in `docs/notes/` (`M2-1-trap-basics.md`,
 `M2-2-trap-return.md`).
 
-### M2 work sequence (agreed with the user)
+### M2 work sequence (completed, kept for reference)
 
-Do the slices in order. Each slice must run in QEMU and be reviewed before the
-next one starts.
+Each slice ran in QEMU and was reviewed before the next one started.
 
 | Slice | Goal | Verification |
 | --- | --- | --- |
@@ -113,7 +112,7 @@ Facts found during M2:
   It must load `t0`/`t1` itself; once they were accidentally deleted, and
   only `objdump` showed the loop using leftover OpenSBI register values.
 
-Known M1 limitation that M2 must keep in mind:
+Known M1 limitation that later milestones must keep in mind:
 
 - `panic()` depends on the UART driver to report anything.
 
