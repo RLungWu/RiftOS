@@ -21,7 +21,7 @@ The next milestone is M2:
 > Trap handler and timer interrupt — how does control leave normal kernel code
 > and return?
 
-M2 is in progress. M2-0 through M2-4 are done; M2-5 is next. Do not start
+M2 is in progress. M2-0 through M2-5 are done; M2-6 is next. Do not start
 memory allocation, virtual memory, scheduling, or user mode as part of M2.
 
 The user's study notes are in `docs/notes/` (`M2-1-trap-basics.md`,
@@ -39,13 +39,16 @@ next one starts.
 | M2-2 | Return from the trap: save and restore the general registers in a trap frame on the stack, advance `sepc` past `ebreak`, then `sret`. | The message after `ebreak` prints. `objdump` shows whether `ebreak` is 2 bytes (`c.ebreak`) or 4 bytes, which decides how far `sepc` advances. |
 | M2-3 | Restore the panic invariant: `panic()` clears `sstatus.SIE` first. Must land before any slice enables interrupts. | `PANIC_TEST=1` still passes. |
 | M2-4 | First timer interrupt: SBI TIME extension `set_timer`, enable `sie.STIE` and `sstatus.SIE`. The handler recognizes interrupt bit + code 5, prints once, then pushes the timer far into the future. | Exactly one timer line prints. |
-| M2-5 | Periodic tick: reprogram the next timer on every interrupt, count ticks, print every N ticks. | Tick lines keep appearing. With `PANIC_TEST=1`, no tick prints after `[PANIC]`. |
+| M2-5 | Zero `.bss` before C runs: `linker.ld` exports `.bss` start and end symbols, and `entry.S` stores zero over that range before `call kernel_main`. | `nm` symbols match the `.bss` range in `objdump -h`. `objdump` shows the loop before `call kernel_main`. A static variable reads 0 even when `.bss` is filled with garbage first. All three checks still pass. |
+| M2-6 | Periodic tick: reprogram the next timer on every interrupt, count ticks, print every N ticks. | Tick lines keep appearing. With `PANIC_TEST=1`, no tick prints after `[PANIC]`. |
 
-Open decision: `entry.S` does not zero `.bss`. The M2-5 tick counter lives in
-`.bss` and currently relies on QEMU leaving RAM zeroed. Ask the user whether
-to add a small "zero `.bss` in `entry.S`" slice before M2-5.
+M2-5 (zero `.bss`) was added before the periodic tick. The ELF stores no
+bytes for `.bss` (`ALLOC` only; `FileSiz 0`), and QEMU's `-kernel` ELF loader
+happens to zero-fill it. A raw binary loaded by a bootloader, or a warm
+reboot, would leave garbage, so `entry.S` now clears `__bss_start` to
+`__bss_end` before `call kernel_main`.
 
-Facts found during M2-1 through M2-4:
+Facts found during M2-1 through M2-5:
 
 - `ebreak` assembles to the 2-byte `c.ebreak` (`9002`) because `rv64gc`
   enables compressed instructions, so `trap_handler` advances `sepc` by 2.
@@ -84,7 +87,16 @@ Facts found during M2-1 through M2-4:
   instruction not yet run (the second `wfi` of the unrolled idle loop). It
   stops the timer with `sbi_set_timer(~0UL)`.
 - `trap_handler` still prints `scause`, `sepc`, and `stval` for every trap.
-  M2-5 must decide whether periodic ticks keep that output.
+  M2-6 must decide whether periodic ticks keep that output.
+- RISC-V GCC places small globals (8 bytes or less) in `.sbss`, not `.bss`,
+  for `gp`-relative access. Before `*(.sbss .sbss.*)` was added to the `.bss`
+  output section, a `static volatile uint64_t` probe landed at `__bss_end`,
+  outside the cleared range. With it, a test that first fills `.bss` with
+  `-1` prints `FFFFFFFFFFFFFFFF` without the clear loop and `0` with it. The
+  M2-6 tick counter would also land in `.sbss`.
+- The clear loop runs before any stack use, so clearing `boot_stack` is safe.
+  It must load `t0`/`t1` itself; once they were accidentally deleted, and
+  only `objdump` showed the loop using leftover OpenSBI register values.
 
 Known M1 limitation that M2 must keep in mind:
 
@@ -126,7 +138,7 @@ time interrupt
 ```
 
 All three checks must keep passing in later milestones (the timer lines
-change in M2-5). Watch each run for at least 2 seconds so the timer has
+change in M2-6). Watch each run for at least 2 seconds so the timer has
 time to fire.
 
 ## Code layout conventions
