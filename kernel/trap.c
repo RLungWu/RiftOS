@@ -3,7 +3,7 @@
 #include "panic.h"
 #include "uart.h"
 #include "trap.h"
-#include "sbi.h"
+#include "timer.h"
 
 extern void trap_entry(void);
 
@@ -17,6 +17,11 @@ void trap_handler(void){
     __asm__ volatile("csrr %0, sepc" : "=r"(sepc));
     __asm__ volatile("csrr %0, stval" : "=r"(stval));
 
+    if (scause == (FLAG_FOR_INTERRUPT_IN_TRAP|S_MODE_CLOCK)){
+        timer_interrupt();
+        return;
+    }
+
     uart_puts("scause = ");
     uart_puthex(scause);
     uart_puts("\r\n");
@@ -28,12 +33,6 @@ void trap_handler(void){
     uart_puts("stval = ");
     uart_puthex(stval);
     uart_puts("\r\n");
-
-    if (scause == (FLAG_FOR_INTERRUPT_IN_TRAP|S_MODE_CLOCK)){
-        uart_puts("time interrupt\r\n");
-        sbi_set_timer(~0UL);
-        return;
-    }
 
     if (scause == 3) {
         sepc += 2;

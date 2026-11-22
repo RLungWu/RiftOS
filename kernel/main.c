@@ -1,21 +1,14 @@
 #include <stdint.h>
 
 #include "panic.h"
-#include "sbi.h"
 #include "trap.h"
 #include "uart.h"
+#include "timer.h"
 
 void kernel_main(void) {
     uart_puts("RiftOS booted\r\n");
     trap_init();
-
-    uint64_t time;
-    __asm__ volatile("csrr %0, time" : "=r"(time));
-    if (sbi_set_timer(time + 10000000) != 0) {
-        panic("sbi_set_timer failed");
-    }
-    __asm__ volatile("csrs sie, %0" : : "r"(1UL << 5));
-    __asm__ volatile("csrs sstatus,%0" : : "r"(2));
+    timer_init();
 
 #ifdef RIFTOS_TRAP_TEST
     uint64_t v;
