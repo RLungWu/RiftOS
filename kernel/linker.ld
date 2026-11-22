@@ -23,8 +23,13 @@ SECTIONS
 
     .bss :
     {
+        . = ALIGN(8);
+        __bss_start = .;
         *(.bss.stack)
+        *(.sbss .sbss.*)
         *(.bss .bss.*)
         *(COMMON)
+        . = ALIGN(8);
+        __bss_end = .;
     }
 }
