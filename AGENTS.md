@@ -21,8 +21,10 @@ The next milestone is M2:
 > Trap handler and timer interrupt — how does control leave normal kernel code
 > and return?
 
-M2 is in progress. M2-0 through M2-5 are done; M2-6 is next. Do not start
-memory allocation, virtual memory, scheduling, or user mode as part of M2.
+All M2 slices (M2-0 through M2-6) are done. Before M2 is accepted, write
+`docs/milestones/M2-trap-and-timer.md` in the same style as the M1 document
+(data flow, invariants, acceptance, known limitations). Do not start memory
+allocation, virtual memory, scheduling, or user mode as part of M2.
 
 The user's study notes are in `docs/notes/` (`M2-1-trap-basics.md`,
 `M2-2-trap-return.md`).
@@ -48,7 +50,7 @@ happens to zero-fill it. A raw binary loaded by a bootloader, or a warm
 reboot, would leave garbage, so `entry.S` now clears `__bss_start` to
 `__bss_end` before `call kernel_main`.
 
-Facts found during M2-1 through M2-5:
+Facts found during M2:
 
 - `ebreak` assembles to the 2-byte `c.ebreak` (`9002`) because `rv64gc`
   enables compressed instructions, so `trap_handler` advances `sepc` by 2.
@@ -86,8 +88,21 @@ Facts found during M2-1 through M2-5:
   fault. It does not touch `sepc`: for an interrupt, `sepc` is the next
   instruction not yet run (the second `wfi` of the unrolled idle loop). It
   stops the timer with `sbi_set_timer(~0UL)`.
-- `trap_handler` still prints `scause`, `sepc`, and `stval` for every trap.
-  M2-6 must decide whether periodic ticks keep that output.
+- Timer code lives in `kernel/timer.c` (`timer_init`, `timer_interrupt`).
+  `trap_handler` only classifies the trap: it checks the timer `scause` first
+  and returns without printing, and prints `scause`, `sepc`, and `stval` only
+  for `ebreak` and unexpected traps. An earlier attempt hid those prints
+  behind `#ifdef RIFTOS_PANIC_TEST`, which would have removed the diagnostics
+  from unexpected traps in normal builds.
+- The tick is 10 ms (`100000` ticks of `time`), printed every 100 ticks
+  (about once per second). The next deadline is `next_deadline +=
+  interval` rather than `time + interval`, so handler latency does not
+  accumulate as drift. If the handler ever runs longer than one interval,
+  the new deadline is already past and the interrupt fires again at once to
+  catch up.
+- `ticks` and `next_deadline` are file-scope `static` variables in `.sbss`,
+  inside the cleared range. Only `timer_interrupt` writes them, and it runs
+  with SIE cleared, so there is no concurrent update on this single hart.
 - RISC-V GCC places small globals (8 bytes or less) in `.sbss`, not `.bss`,
   for `gp`-relative access. Before `*(.sbss .sbss.*)` was added to the `.bss`
   output section, a `static volatile uint64_t` probe landed at `__bss_end`,
@@ -118,28 +133,24 @@ Expected output:
 
 ```text
 RiftOS booted                 # normal boot
-scause = 8000000000000005     # about 1 second later, exactly once
-sepc = <address after a wfi in objdump>
-stval = 0000000000000000
-time interrupt
+Tick:0000000000000064         # about once per second, +0x64 each line
+Tick:00000000000000C8
+Tick:000000000000012C
 
 RiftOS booted                 # PANIC_TEST=1
-[PANIC]: Test                 # nothing after this, even after 1 second
+[PANIC]: Test                 # no tick after this, ever
 
 RiftOS booted                 # TRAP_TEST=1
 scause = 0000000000000003
 sepc = <address of ebreak in objdump>
 stval = <same as sepc>
 a0 after trap = 0000000000001234
-scause = 8000000000000005     # timer, about 1 second later
-sepc = <address after a wfi in objdump>
-stval = 0000000000000000
-time interrupt
+Tick:0000000000000064         # then ticks as in the normal boot
+Tick:00000000000000C8
 ```
 
-All three checks must keep passing in later milestones (the timer lines
-change in M2-6). Watch each run for at least 2 seconds so the timer has
-time to fire.
+All three checks must keep passing in later milestones. Watch each run for
+at least 3 seconds so several tick lines appear.
 
 ## Code layout conventions
 
